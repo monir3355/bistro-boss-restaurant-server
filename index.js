@@ -123,6 +123,19 @@ async function run() {
       const result = await menuCollection.find({}).toArray();
       res.send(result);
     });
+    // menus post
+    app.post("/menus", verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = req.body;
+      const result = await menuCollection.insertOne(newItem);
+      res.send(result);
+    });
+    // menus delete
+    app.delete("/menus/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = menuCollection.deleteOne(query);
+      res.send(result);
+    });
     // review get all data
     app.get("/reviews", async (req, res) => {
       const result = await reviewCollection.find({}).toArray();
