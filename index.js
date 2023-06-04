@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRETE_KEY);
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -52,6 +53,7 @@ async function run() {
     const menuCollection = client.db("bistroBossDB").collection("menus");
     const reviewCollection = client.db("bistroBossDB").collection("reviews");
     const cartCollection = client.db("bistroBossDB").collection("carts");
+    const paymentCollection = client.db("bistroBossDB").collection("payments");
 
     // jwt
     app.post("/jwt", (req, res) => {
@@ -76,8 +78,8 @@ async function run() {
     };
     // users
     app.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
-      const result = await userCollection.find({}).toArray();
-      res.send(result);
+      const insertResult = await userCollection.find({}).toArray();
+      res.send(insertResult);
     });
     // jwt email check the user
     app.get("/users/admin/:email", verifyJWT, async (req, res) => {
@@ -86,8 +88,8 @@ async function run() {
         res.send({ admin: false });
       }
       const user = await userCollection.findOne({ email: email });
-      const result = { admin: user?.role === "admin" };
-      res.send(result);
+      const insertResult = { admin: user?.role === "admin" };
+      res.send(insertResult);
     });
     app.patch("/users/admin/:id", async (req, res) => {
       const id = req.params.id;
@@ -97,15 +99,15 @@ async function run() {
           role: "admin",
         },
       };
-      const result = await userCollection.updateOne(filter, updatedDoc);
-      res.send(result);
+      const insertResult = await userCollection.updateOne(filter, updatedDoc);
+      res.send(insertResult);
     });
 
     app.delete("/users/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
-      const result = await userCollection.deleteOne(query);
-      res.send(result);
+      const insertResult = await userCollection.deleteOne(query);
+      res.send(insertResult);
     });
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -114,32 +116,32 @@ async function run() {
       if (existingUser) {
         res.send({ message: "User already exist!" });
       } else {
-        const result = await userCollection.insertOne(user);
-        res.send(result);
+        const insertResult = await userCollection.insertOne(user);
+        res.send(insertResult);
       }
     });
     // menus get all data
     app.get("/menus", async (req, res) => {
-      const result = await menuCollection.find({}).toArray();
-      res.send(result);
+      const insertResult = await menuCollection.find({}).toArray();
+      res.send(insertResult);
     });
     // menus post
     app.post("/menus", verifyJWT, verifyAdmin, async (req, res) => {
       const newItem = req.body;
-      const result = await menuCollection.insertOne(newItem);
-      res.send(result);
+      const insertResult = await menuCollection.insertOne(newItem);
+      res.send(insertResult);
     });
     // menus delete
     app.delete("/menus/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
-      const result = menuCollection.deleteOne(query);
-      res.send(result);
+      const insertResult = menuCollection.deleteOne(query);
+      res.send(insertResult);
     });
     // review get all data
     app.get("/reviews", async (req, res) => {
-      const result = await reviewCollection.find({}).toArray();
-      res.send(result);
+      const insertResult = await reviewCollection.find({}).toArray();
+      res.send(insertResult);
     });
     // cart collection
     app.get("/carts", verifyJWT, async (req, res) => {
@@ -154,20 +156,49 @@ async function run() {
           .send({ error: true, message: "Forbidden access" });
       }
       const query = { email: email };
-      const result = await cartCollection.find(query).toArray();
-      res.send(result);
+      const insertResult = await cartCollection.find(query).toArray();
+      res.send(insertResult);
     });
     // add to cart
     app.post("/carts", async (req, res) => {
       const item = req.body;
-      const result = await cartCollection.insertOne(item);
-      res.send(result);
+      const insertResult = await cartCollection.insertOne(item);
+      res.send(insertResult);
     });
     // delete from user dashboard
     app.delete("/carts/:id", async (req, res) => {
       const id = req.params.id;
-      const result = await cartCollection.deleteOne({ _id: new ObjectId(id) });
-      res.send(result);
+      const insertResult = await cartCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+      res.send(insertResult);
+    });
+
+    // Stripe payment
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+    // payment related api
+    app.post("/payments", verifyJWT, async (req, res) => {
+      const payment = req.body;
+      const insertResult = await paymentCollection.insertOne(payment);
+
+      const query = {
+        _id: { $in: payment.cartItems.map((id) => new ObjectId(id)) },
+      };
+      const deleteResult = await cartCollection.deleteMany(query);
+
+      res.send({ insertResult, deleteResult });
     });
 
     console.log(
